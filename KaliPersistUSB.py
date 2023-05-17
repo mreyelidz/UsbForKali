@@ -17,45 +17,42 @@ for device in iter(monitor.poll, None):
         print("USB drive {} connected!".format(device.sys_name))
         break
 
-# check if the USB drive already contains an installed version of Kali Linux
-if os.path.exists("{}/live/image/live/filesystem.squashfs".format(usb_device)):
-    print("Found an existing Kali Linux installation on the USB drive.")
-
-# check if the installed version of Kali Linux supports USB persistence mode
+# check if the USB drive already contains a usable version of Kali Linux
 if os.path.exists("{}/live/persistence.conf".format(usb_device)):
     with open("{}/live/persistence.conf".format(usb_device), "r") as f:
         content = f.read()
         if "/live/cow" in content:
-            print("The installed version of Kali Linux supports USB persistence mode.")
+            print("Found an existing usable Kali Linux installation with persistence on the USB drive.")
+            # identify the device name of the USB drive
+            time.sleep(5)
+            device_name = glob.glob("/dev/{}*".format(device.sys_name))[0]
         else:
-            print("The installed version of Kali Linux does not support USB persistence mode.")
+            print("Found an existing Kali Linux installation on the USB drive, but it does not support persistence.")
 else:
-    print("The installed version of Kali Linux does not support USB persistence mode.")
+    # calculate the size of the Persistence partition
+    partition_size = int(os.popen("sudo fdisk -l {} | grep Disk | awk '{{print $5}}'".format(usb_device)).read().strip()) // 1024 // 1024 // 1024
+    persistence_size = partition_size - 4 if partition_size > 4 else partition_size
 
-# calculate the size of the Persistence partition
-partition_size = int(os.popen("sudo fdisk -l {} | grep Disk | awk '{{print $5}}'".format(usb_device)).read().strip()) // 1024 // 1024 // 1024
-persistence_size = partition_size - 4 if partition_size > 4 else partition_size
+    # create the bootable USB drive
+    print("Creating a bootable USB drive...")
+    os.system("sudo dd if={} of={} bs=4M status=progress".format(iso_file, usb_device))
 
-# create the bootable USB drive
-print("Creating a bootable USB drive...")
-os.system("sudo dd if={} of={} bs=4M status=progress".format(iso_file, usb_device))
+    # identify the device name of the USB drive
+    time.sleep(5)
+    device_name = glob.glob("/dev/{}*".format(device.sys_name))[0]
 
-# identify the device name of the USB drive
-time.sleep(5)
-device_name = glob.glob("/dev/{}*".format(device.sys_name))[0]
+    # create a new partition on the USB drive
+    print("Creating a new partition on the USB drive...")
+    os.system("echo -e 'n\np\n2\n\n+{}G\nw' | sudo fdisk {}".format(persistence_size, device_name))
 
-# create a new partition on the USB drive
-print("Creating a new partition on the USB drive...")
-os.system("echo -e 'n\np\n2\n\n+{}G\nw' | sudo fdisk {}".format(persistence_size, device_name))
+    # format the new partition as ext4
+    print("Formatting the new partition as ext4...")
+    os.system("sudo mkfs.ext4 {}2".format(device_name))
 
-# format the new partition as ext4
-print("Formatting the new partition as ext4...")
-os.system("sudo mkfs.ext4 {}2".format(device_name))
-
-# mount the new partition
-print("Mounting the new partition...")
-os.system("sudo mkdir -p /mnt/my_usb")
-os.system("sudo mount {}2 /mnt/my_usb".format(device_name))
+    # mount the new partition
+    print("Mounting the new partition...")
+    os.system("sudo mkdir -p /mnt/my_usb")
+    os.system("sudo mount {}2 /mnt/my_usb".format(device_name))
 
 # run the Kali Linux installer in Live mode with Persistence
 print("Running the Kali Linux installer...")
