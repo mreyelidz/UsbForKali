@@ -17,6 +17,21 @@ for device in iter(monitor.poll, None):
         print("USB drive {} connected!".format(device.sys_name))
         break
 
+# check if the USB drive already contains an installed version of Kali Linux
+if os.path.exists("{}/live/image/live/filesystem.squashfs".format(usb_device)):
+    print("Found an existing Kali Linux installation on the USB drive.")
+
+# check if the installed version of Kali Linux supports USB persistence mode
+if os.path.exists("{}/live/persistence.conf".format(usb_device)):
+    with open("{}/live/persistence.conf".format(usb_device), "r") as f:
+        content = f.read()
+        if "/live/cow" in content:
+            print("The installed version of Kali Linux supports USB persistence mode.")
+        else:
+            print("The installed version of Kali Linux does not support USB persistence mode.")
+else:
+    print("The installed version of Kali Linux does not support USB persistence mode.")
+
 # calculate the size of the Persistence partition
 partition_size = int(os.popen("sudo fdisk -l {} | grep Disk | awk '{{print $5}}'".format(usb_device)).read().strip()) // 1024 // 1024 // 1024
 persistence_size = partition_size - 4 if partition_size > 4 else partition_size
