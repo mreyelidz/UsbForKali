@@ -1,5 +1,3 @@
-Kali USB persistence
-
 import os
 import glob
 import time
