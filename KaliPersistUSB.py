@@ -85,7 +85,7 @@ def main():
         device_name = check_persistence(usb_device)
         if not device_name:
             iso_file = download_kali()
-            partition_size = int(os.popen("sudo fdisk -l {} | grep Disk | awk '{{print $5}}'".format(usb_device)).read().strip()) // 1024 // 1024 // 1024
+            partition_size = int(os.popen("sudo fdisk -l {} | grep Disk | awk '{{print $5}}' | tr -d '\nFD'".format(usb_device)).read().strip()) // 1024 // 1024 // 1024
             persistence_size = partition_size - 4 if partition_size > 4 else partition_size
             create_persistent_partition(usb_device, persistence_size)
             device_name = f"{usb_device}2"
