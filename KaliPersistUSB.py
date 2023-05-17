@@ -2,6 +2,7 @@ import os
 import glob
 import time
 import pyudev
+import sys
 
 context = pyudev.Context()
 monitor = pyudev.Monitor.from_netlink(context)
@@ -20,7 +21,6 @@ if os.path.exists("{}/live/persistence.conf".format(usb_device)):
             print("Found an existing usable Kali Linux installation with persistence on the USB drive.")
             time.sleep(5)
             device_name = glob.glob("/dev/{}*".format(device.sys_name))[0]
-            break
         else:
             print("Found an existing Kali Linux installation on the USB drive, but it does not support persistence.")
 
@@ -37,7 +37,7 @@ if 'device_name' in locals() or 'iso_file' in locals():
     else:
         print("Continuing with the ISO download.")
         os.system("sudo apt-get install -y curl")
-        os.system("curl -L -O https://cdimage.kali.org/kali-2021.3/kali-linux-2023.1-live-amd64.iso")
+        os.system("curl -L -O https://cdimage.kali.org/kali-2023.1/kali-linux-2023.1-live-amd64.iso")
         iso_file = "kali-linux-2023.1-live-amd64.iso"
 
     partition_size = int(os.popen("sudo fdisk -l {} | grep Disk | awk '{{print $5}}'".format(usb_device)).read().strip()) // 1024 // 1024 // 1024
