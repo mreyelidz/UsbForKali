@@ -4,56 +4,66 @@ import time
 import pyudev
 import sys
 
-context = pyudev.Context()
-monitor = pyudev.Monitor.from_netlink(context)
-monitor.filter_by('block')
-print("Waiting for a USB drive to be connected...")
-for device in iter(monitor.poll, None):
-    if 'ID_BUS' in device and device['ID_BUS'] == 'usb':
-        usb_device = "/dev/{}".format(device.sys_name)
-        print("USB drive {} connected!".format(device.sys_name))
-        break
+def poll_usb():
+    '''
+    Polls for USB Device and returns device object
+    '''
+    context = pyudev.Context()
+    monitor = pyudev.Monitor.from_netlink(context, "udev")
+    monitor.filter_by(subsystem="block", device_type="disk")
+    print("Waiting for a USB drive to be connected...")
+    for device in iter(monitor.poll, None):
+        if device.action == "add":
+            if 'ID_BUS' in device and device['ID_BUS'] == 'usb':
+                usb_device = "/dev/{}".format(device.sys_name)
+                print("USB drive {} connected!".format(device.sys_name))
+                return usb_device
 
-if os.path.exists("{}/live/persistence.conf".format(usb_device)):
-    with open("{}/live/persistence.conf".format(usb_device), "r") as f:
-        content = f.read()
-        if "/live/cow" in content:
-            print("Found an existing usable Kali Linux installation with persistence on the USB drive.")
-            time.sleep(5)
-            device_name = glob.glob("/dev/{}*".format(device.sys_name))[0]
-        else:
-            print("Found an existing Kali Linux installation on the USB drive, but it does not support persistence.")
+def check_persistence(usb_device):
+    '''
+    Checks for persistence.conf file and determines if persistence is enabled
+    '''
+    if os.path.exists("{}/live/persistence.conf".format(usb_device)):
+        with open("{}/live/persistence.conf".format(usb_device), "r") as f:
+            content = f.read()
+            if "/live/cow" in content:
+                print("Found an existing usable Kali Linux installation with persistence on the USB drive.")
+                time.sleep(5)
+                device_name = glob.glob("/dev/{}*".format(os.path.basename(usb_device)))[0]
+                return device_name
+            else:
+                print("Found an existing Kali Linux installation on the USB drive, but it does not support persistence.")
 
-if 'iso_file' not in locals():
-    iso_files = glob.glob("*.iso")
-    if len(iso_files) == 0:
-        print("No .iso files found in the current directory. Exiting.")
-        sys.exit(1)
-    iso_file = iso_files[0]
-
-if 'device_name' in locals() or 'iso_file' in locals():
-    if 'device_name' in locals():
-        print("Skipping ISO download since a usable Kali Linux installation was found on the USB drive.")
+def download_kali():
+    '''
+    Downloads the Kali Linux ISO if it does not exist, returns the filename
+    '''
+    if len(glob.glob("*.iso")) > 0:
+        iso_file = glob.glob("*.iso")[0]
+        print(f"Skipping ISO download since {iso_file} exists.")
     else:
         print("Continuing with the ISO download.")
         os.system("sudo apt-get install -y curl")
         os.system("curl -L -O https://cdimage.kali.org/kali-2023.1/kali-linux-2023.1-live-amd64.iso")
         iso_file = "kali-linux-2023.1-live-amd64.iso"
+    return iso_file
 
-    partition_size = int(os.popen("sudo fdisk -l {} | grep Disk | awk '{{print $5}}'".format(usb_device)).read().strip()) // 1024 // 1024 // 1024
-    persistence_size = partition_size - 4 if partition_size > 4 else partition_size
-
-    print("Creating a bootable USB drive...")
-    os.system("sudo dd if={} of={} bs=4M status=progress".format(iso_file, usb_device))
-
-    time.sleep(5)
-    device_name = glob.glob("/dev/{}*".format(device.sys_name))[0]
-
+def create_persistent_partition(usb_device, persistence_size):
+    '''
+    Create ext4 partition for Kali Linux persistence 
+    '''
     print("Creating a new partition on the USB drive...")
-    os.system("echo -e 'n\np\n2\n\n+{}G\nw' | sudo fdisk {}".format(persistence_size, device_name))
+    os.system("echo -e 'n\np\n2\n\n+{}G\nw' | sudo fdisk {}".format(persistence_size, usb_device))
 
     print("Formatting the new partition as ext4...")
-    os.system("sudo mkfs.ext4 {}2".format(device_name))
+    os.system("sudo mkfs.ext4 {}2".format(usb_device))
+
+def install_kali_usb(iso_file, device_name):
+    '''
+    Installs Kali Linux to the USB device
+    '''
+    print("Creating a bootable USB drive...")
+    os.system(f"sudo dd if={iso_file} of={device_name} bs=4M status=progress")
 
     print("Mounting the new partition...")
     os.system("sudo mkdir -p /mnt/my_usb")
@@ -62,7 +72,28 @@ if 'device_name' in locals() or 'iso_file' in locals():
     print("Running the Kali Linux installer...")
     os.system("sudo /mnt/my_usb/live-installer/installer.sh")
 
+def restart_computer():
+    '''
+    Reboots computer and boots to Persistent Kali Linux on USB
+    '''
     print("Rebooting the computer and selecting the Persistent boot option...")
     os.system("sudo reboot")
-else:
-    print("No usable Kali Linux installation or Kali Linux ISO file found.")
+
+def main():
+    usb_device = poll_usb()
+    if usb_device:
+        device_name = check_persistence(usb_device)
+        if not device_name:
+            iso_file = download_kali()
+            partition_size = int(os.popen("sudo fdisk -l {} | grep Disk | awk '{{print $5}}'".format(usb_device)).read().strip()) // 1024 // 1024 // 1024
+            persistence_size = partition_size - 4 if partition_size > 4 else partition_size
+            create_persistent_partition(usb_device, persistence_size)
+            device_name = f"{usb_device}2"
+            install_kali_usb(iso_file, device_name)
+            restart_computer()
+    else:
+        print("No USB devices found. Exiting.")
+        sys.exit(1)
+
+if __name__ == '__main__':
+    main()
