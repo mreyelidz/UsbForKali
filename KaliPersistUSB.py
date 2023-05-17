@@ -3,8 +3,8 @@ import glob
 import time
 import pyudev
 
-# set the name of the Kali Linux ISO file
-iso_file = "kali-linux-2023.1-amd64.iso"
+# search the current directory for the Kali Linux ISO file
+iso_file = glob.glob("*.iso")[0]
 
 # get the first connected USB device
 context = pyudev.Context()
